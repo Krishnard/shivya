@@ -1,43 +1,49 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../providers/cart_provider.dart';
-
+import '../providers/product_provider.dart';
 
 class CategoryChips extends StatelessWidget {
   const CategoryChips({super.key});
 
-  final List<String> _categories = const [
-    'All',
-    'Ayurveda',
-    'Immunity',
-    'Pain Relief',
-    'Skin Care',
-    'Hair Care',
-    'Digestive',
-  ];
-
   @override
   Widget build(BuildContext context) {
+    final productProvider = Provider.of<ProductProvider>(context);
+    final categories = productProvider.categories;
+    final selected = productProvider.selectedCategory;
+
+    if (productProvider.isLoading && categories.length <= 1) {
+      return const SizedBox(
+        height: 42,
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+
     return SizedBox(
       height: 42,
       child: ListView.separated(
         padding: const EdgeInsets.symmetric(horizontal: 12),
         scrollDirection: Axis.horizontal,
+        itemCount: categories.length,
         itemBuilder: (context, index) {
-          final label = _categories[index];
-          final selected = index == 0;
+          final label = categories[index];
+          final isSelected = selected == label;
 
           return FilterChip(
-            selected: selected,
             label: Text(label),
+            selected: isSelected,
+            selectedColor: Colors.green.shade600,
+            labelStyle: TextStyle(
+              color: isSelected ? Colors.white : Colors.black,
+              fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
+            ),
+            backgroundColor: Colors.white,
+            side: const BorderSide(color: Colors.green),
             onSelected: (_) {
-              Provider.of<CartProvider>(context, listen: false)
-                  .selectCategory(label);
+              productProvider.filterByCategory(label);
             },
           );
         },
         separatorBuilder: (_, __) => const SizedBox(width: 8),
-        itemCount: _categories.length,
       ),
     );
   }

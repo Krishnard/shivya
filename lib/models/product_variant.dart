@@ -4,7 +4,7 @@ class ProductVariant {
   final double price;
   final double? compareAtPrice;
 
-  const ProductVariant({
+  ProductVariant({
     required this.id,
     required this.title,
     required this.price,

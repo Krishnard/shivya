@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
 import '../providers/cart_provider.dart';
+import '../providers/auth_provider.dart';
 import '../models/product.dart';
 import 'login_page.dart';
-import '../providers/auth_provider.dart';
 
 class CartPage extends StatelessWidget {
   const CartPage({super.key});
@@ -27,7 +28,7 @@ class CartPage extends StatelessWidget {
               const SizedBox(height: 12),
               ElevatedButton(
                 onPressed: () {
-                  Navigator.pop(context); // go back to home
+                  Navigator.pop(context); // go back to previous (Home)
                 },
                 child: const Text("Shop Now"),
               ),
@@ -51,7 +52,11 @@ class CartPage extends StatelessWidget {
             child: ListView.builder(
               itemCount: cart.cartItems.length,
               itemBuilder: (context, index) {
-                final Product product = cart.cartItems[index];
+                final CartItem item = cart.cartItems[index];
+                final Product product = item.product;
+                final int qty = item.quantity;
+                final double lineTotal = product.price * qty;
+
                 return ListTile(
                   leading: ClipRRect(
                     borderRadius: BorderRadius.circular(10),
@@ -60,13 +65,46 @@ class CartPage extends StatelessWidget {
                       width: 55,
                       height: 55,
                       fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Container(
+                        width: 55,
+                        height: 55,
+                        color: Colors.grey.shade200,
+                        child: const Icon(Icons.broken_image, size: 20),
+                      ),
                     ),
                   ),
                   title: Text(product.name),
-                  subtitle: Text('₹${product.price}'),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.delete_outline),
-                    onPressed: () => cart.removeFromCart(product),
+                  subtitle: Text(
+                    '₹${product.price.toStringAsFixed(0)} x $qty = ₹${lineTotal.toStringAsFixed(0)}',
+                  ),
+
+                  // Qty +/- + delete
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.remove_circle_outline),
+                        onPressed: () {
+                          cart.removeFromCart(product);
+                        },
+                      ),
+                      Text(
+                        qty.toString(),
+                        style: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.add_circle_outline),
+                        onPressed: () {
+                          cart.addToCart(product);
+                        },
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.delete_outline),
+                        onPressed: () {
+                          cart.removeItemCompletely(product);
+                        },
+                      ),
+                    ],
                   ),
                 );
               },
@@ -108,14 +146,18 @@ class CartPage extends StatelessWidget {
                         // force login before checkout
                         Navigator.push(
                           context,
-                          MaterialPageRoute(builder: (_) => const LoginPage()),
+                          MaterialPageRoute(
+                            builder: (_) => const LoginPage(),
+                          ),
                         );
                         return;
                       }
 
-                      // TODO: proceed to real checkout later
+                      // TODO: integrate real checkout
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text("Checkout coming soon!")),
+                        const SnackBar(
+                          content: Text("Checkout coming soon!"),
+                        ),
                       );
                     },
                     child: const Text(

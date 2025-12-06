@@ -12,7 +12,6 @@ class ProductGrid extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cartProvider = Provider.of<CartProvider>(context);
     final productProvider = Provider.of<ProductProvider>(context);
 
     if (productProvider.isLoading) {
@@ -40,27 +39,15 @@ class ProductGrid extends StatelessWidget {
       );
     }
 
-    List<Product> products = productProvider.products;
-    if (products.isEmpty) products = demoProducts;
-
-    // 🔥 Category filter using selectedCategory
-    final selectedCat = cartProvider.selectedCategory;
-    products = products.where((product) {
-      if (selectedCat == 'All') return true;
-
-      final pc = product.category.toLowerCase();
-      final sc = selectedCat.toLowerCase();
-
-      // Match contains so "Gut & Liver Care" still matches "Gut & Liver"
-      return pc.contains(sc);
-    }).toList();
+    // 🆕 Using filtered product list directly from provider
+    List<Product> products = List.from(productProvider.products);
 
     if (products.isEmpty) {
       return const SliverToBoxAdapter(
         child: Center(
           child: Padding(
             padding: EdgeInsets.all(20.0),
-            child: Text('No products found for this category.'),
+            child: Text("No products found"),
           ),
         ),
       );
@@ -70,6 +57,12 @@ class ProductGrid extends StatelessWidget {
     final crossAxisCount = isWide ? 3 : 2;
 
     return SliverGrid(
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: crossAxisCount,
+        childAspectRatio: 0.65,
+        crossAxisSpacing: 10,
+        mainAxisSpacing: 10,
+      ),
       delegate: SliverChildBuilderDelegate(
         (context, index) {
           final product = products[index];
@@ -77,17 +70,9 @@ class ProductGrid extends StatelessWidget {
         },
         childCount: products.length,
       ),
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: crossAxisCount,
-        childAspectRatio: 0.65,
-        crossAxisSpacing: 10,
-        mainAxisSpacing: 10,
-      ),
     );
   }
 }
-
-
 
 class _ProductCard extends StatelessWidget {
   final Product product;
@@ -95,8 +80,9 @@ class _ProductCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
     final wishlistProvider = Provider.of<WishlistProvider>(context);
+    final cartProvider = Provider.of<CartProvider>(context, listen: false);
+    final cs = Theme.of(context).colorScheme;
 
     return InkWell(
       onTap: () {
@@ -117,10 +103,20 @@ class _ProductCard extends StatelessWidget {
             Stack(
               children: [
                 ClipRRect(
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(18),
+                  ),
                   child: AspectRatio(
                     aspectRatio: 1,
-                    child: Image.network(product.imageUrl, fit: BoxFit.cover),
+                    child: Image.network(
+                      product.imageUrl,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Container(
+                        color: Colors.grey.shade200,
+                        alignment: Alignment.center,
+                        child: const Icon(Icons.broken_image),
+                      ),
+                    ),
                   ),
                 ),
 
@@ -128,42 +124,49 @@ class _ProductCard extends StatelessWidget {
                 Positioned(
                   right: 8,
                   top: 8,
-                  child: CircleAvatar(
-                    radius: 14,
-                    backgroundColor: Colors.white,
-                    child: IconButton(
-                      alignment: Alignment.center,
-                      padding: EdgeInsets.zero,
-                      icon: Icon(
+                  child: GestureDetector(
+                    onTap: () {
+                      wishlistProvider.toggleWishlist(product);
+                    },
+                    child: CircleAvatar(
+                      radius: 14,
+                      backgroundColor: Colors.white,
+                      child: Icon(
                         wishlistProvider.isInWishlist(product)
                             ? Icons.favorite
                             : Icons.favorite_border,
                         size: 16,
-                        color: Colors.red,
+                        color: Colors.pink,
                       ),
-                      onPressed: () => wishlistProvider.toggleWishlist(product),
                     ),
                   ),
                 ),
 
-                Positioned(
-                  left: 8,
-                  top: 8,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.shade400,
-                      borderRadius: BorderRadius.circular(40),
-                    ),
-                    child: const Text(
-                      'FLAT 20% OFF',
-                      style: TextStyle(
+                /// Discount if available
+                if (product.compareAtPrice != null &&
+                    product.compareAtPrice! > product.price)
+                  Positioned(
+                    left: 8,
+                    top: 8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.shade400,
+                        borderRadius: BorderRadius.circular(40),
+                      ),
+                      child: Text(
+                        '${_discount(product)}% OFF',
+                        style: const TextStyle(
                           color: Colors.white,
                           fontSize: 9,
-                          fontWeight: FontWeight.bold),
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
                   ),
-                ),
               ],
             ),
 
@@ -187,7 +190,7 @@ class _ProductCard extends StatelessWidget {
               child: Row(
                 children: [
                   Text(
-                    '₹${product.price}',
+                    '₹${product.price.round()}',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
@@ -198,24 +201,35 @@ class _ProductCard extends StatelessWidget {
 
                   /// 🛒 Add to Cart
                   IconButton(
-                    icon: const Icon(Icons.add_shopping_cart),
+                    icon: const Icon(Icons.add_shopping_cart, size: 20),
                     onPressed: () {
-                      Provider.of<CartProvider>(context, listen: false)
-                          .addToCart(product);
+                      cartProvider.addToCart(product);
+
+                      // 🔥 Remove from wishlist when added to cart
+                      if (wishlistProvider.isInWishlist(product)) {
+                        wishlistProvider.toggleWishlist(product);
+                      }
 
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
                           content: Text('${product.name} added to cart!'),
+                          duration: const Duration(milliseconds: 900),
                         ),
                       );
                     },
                   ),
                 ],
               ),
-            )
+            ),
           ],
         ),
       ),
     );
+  }
+
+  int _discount(Product p) {
+    if (p.compareAtPrice == null || p.compareAtPrice! <= p.price) return 0;
+    final d = ((p.compareAtPrice! - p.price) / p.compareAtPrice!) * 100;
+    return d.round();
   }
 }

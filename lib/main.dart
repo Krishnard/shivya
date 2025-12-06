@@ -10,6 +10,7 @@ import 'providers/cart_provider.dart';
 import 'providers/product_provider.dart';
 import 'providers/wishlist_provider.dart';
 import 'providers/auth_provider.dart';
+import 'pages/cart_page.dart';
 
 void main() {
   runApp(const ShivyaApp());
@@ -23,7 +24,9 @@ class ShivyaApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => CartProvider()),
-        ChangeNotifierProvider(create: (_) => ProductProvider()..loadProducts()),
+        ChangeNotifierProvider(
+          create: (_) => ProductProvider()..loadProducts(),
+        ),
         ChangeNotifierProvider(create: (_) => WishlistProvider()),
         ChangeNotifierProvider(create: (_) => AuthProvider()),
       ],
@@ -32,9 +35,7 @@ class ShivyaApp extends StatelessWidget {
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
           useMaterial3: true,
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: const Color(0xFF00695C),
-          ),
+          colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF00695C)),
         ),
         home: const MainScaffold(),
       ),
@@ -55,28 +56,16 @@ class _MainScaffoldState extends State<MainScaffold> {
   final _pages = const [
     HomePage(),
     CategoriesPage(),
-    AccountPage(), // will be gated by login
+    AccountPage(), // 🟢 Account Page moved to index 2
   ];
 
   @override
   Widget build(BuildContext context) {
-    final auth = Provider.of<AuthProvider>(context);
-
     return Scaffold(
       body: _pages[_index],
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
         onDestinationSelected: (value) {
-          // If Account tab tapped & not logged in ➜ show LoginPage instead
-          if (value == 2 && !auth.isLoggedIn) {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => const LoginPage(),
-              ),
-            );
-            return;
-          }
           setState(() => _index = value);
         },
         destinations: const [

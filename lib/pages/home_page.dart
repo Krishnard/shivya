@@ -9,10 +9,18 @@ import '../pages/product_detail_page.dart';
 import '../pages/cart_page.dart';
 import '../pages/wishlist_page.dart';
 import '../providers/wishlist_provider.dart';
+import '../pages/search_page.dart';
 
-const Color kPrimaryGreen = Color(0xFF99FF99); // your light green
+// Optional shimmer widgets (used during loading)
+import '../widgets/shimmer/topbar_shimmer.dart';
+import '../widgets/shimmer/banner_shimmer.dart';
+import '../widgets/shimmer/category_shimmer.dart';
+import '../widgets/shimmer/product_horizontal_shimmer.dart';
+import '../widgets/shimmer/simple_row_shimmer.dart';
+
+const Color kPrimaryGreen = Color(0xFF99FF99); // light green
 const Color kBgTint = Color(0xFFE8F7F3); // soft mint background
-const Color kDarkGreen = Color(0xFF0F7A4A); // supportive dark green
+const Color kDarkGreen = Color(0xFF0F7A4A); // dark green
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -23,32 +31,29 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   @override
+  void initState() {
+    super.initState();
+
+    // Load Shopify products when Home opens ⤵️
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Provider.of<ProductProvider>(context, listen: false).loadProducts();
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
     final productProvider = Provider.of<ProductProvider>(context);
 
     final bool loading = productProvider.isLoading;
     final String? error = productProvider.error;
-    List<Product> products = productProvider.products;
+    final List<Product> products = productProvider.products;
 
-    // Fallback if no Shopify products yet
-    if (products.isEmpty) {
-      products = demoProducts;
-    }
+    // 🔥 Spotlight = products where metafield custom.spotlight == true
+    // Spotlight section - simple version: just take first few products
+    final List<Product> spotlight = products.take(5).toList();
 
-    // 🔥 SPECIAL OFFERS spotlight (collection-based)
-    // We treat product.category as coming from Shopify productType / collection tag
-    final specialOffers = products.where((p) {
-      final c = p.category.toLowerCase().trim();
-      return c == 'special offers' || c == 'special offer';
-    }).toList();
-
-    // Spotlight = Special Offers first, otherwise fallback
-    final spotlight = specialOffers.isNotEmpty
-        ? specialOffers
-        : products.take(5).toList();
-
-    // New Arrivals = everything else (or next few)
-    final newArrivals = products
+    // New arrivals = everything not in spotlight (limit 10)
+    final List<Product> newArrivals = products
         .where((p) => !spotlight.contains(p))
         .take(10)
         .toList();
@@ -61,15 +66,24 @@ class _HomePageState extends State<HomePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const _HomeTopBar(),
+              // ───────────────── Top Bar (Search + Wishlist + Cart)
+              if (loading) const TopBarShimmer() else const _HomeTopBar(),
               const SizedBox(height: 12),
-              const _PromoBannerCarousel(),
+
+              // ───────────────── Banner
+              if (loading)
+                const BannerShimmer()
+              else
+                const _PromoBannerCarousel(),
               const SizedBox(height: 16),
+
+              // ───────────────── Categories
               const _SectionHeader(title: 'Shop by Category'),
               const SizedBox(height: 10),
-              const _CategoryRow(),
+              if (loading) const CategoryShimmer() else const _CategoryRow(),
               const SizedBox(height: 20),
 
+              // ───────────────── Spotlight Section
               const _SectionHeader(
                 title: 'In the Spotlight',
                 subtitle: 'Unmissable favorites you’ll adore',
@@ -77,12 +91,7 @@ class _HomePageState extends State<HomePage> {
               const SizedBox(height: 8),
 
               if (loading)
-                const Center(
-                  child: Padding(
-                    padding: EdgeInsets.all(24.0),
-                    child: CircularProgressIndicator(),
-                  ),
-                )
+                const ProductHorizontalShimmer()
               else if (error != null)
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -91,65 +100,86 @@ class _HomePageState extends State<HomePage> {
                     style: const TextStyle(color: Colors.red),
                   ),
                 )
-              else
-                // ⭐ Spotlight Section
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
+              else if (spotlight.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16),
                   child: Text(
-                    "In the Spotlight",
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: kDarkGreen,
-                    ),
+                    'No spotlight products available right now.',
+                    style: TextStyle(fontSize: 13),
+                  ),
+                )
+              else
+                SizedBox(
+                  height: 265,
+                  child: ListView.separated(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    scrollDirection: Axis.horizontal,
+                    itemBuilder: (_, i) =>
+                        _SpotlightProductCard(product: spotlight[i]),
+                    separatorBuilder: (_, __) => const SizedBox(width: 14),
+                    itemCount: spotlight.length,
                   ),
                 ),
-              const SizedBox(height: 10),
-
-              SizedBox(
-                height: 265,
-                child: ListView.separated(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  scrollDirection: Axis.horizontal,
-                  itemBuilder: (_, i) =>
-                      _SpotlightProductCard(product: spotlight[i]),
-                  separatorBuilder: (_, __) => const SizedBox(width: 14),
-                  itemCount: spotlight.length,
-                ),
-              ),
-              const SizedBox(height: 20),
 
               const SizedBox(height: 20),
+
+              // ───────────────── Mid Promo Banner
               const _MidPromoBanner(),
               const SizedBox(height: 20),
 
+              // ───────────────── New Arrivals
               const _SectionHeader(
                 title: 'New Arrivals',
                 subtitle: 'Freshly added wellness picks',
               ),
               const SizedBox(height: 8),
-              _NewArrivalsGrid(products: newArrivals),
+
+              if (loading && products.isEmpty)
+                const ProductHorizontalShimmer()
+              else if (!loading && newArrivals.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16),
+                  child: Text(
+                    'No new arrivals available at the moment.',
+                    style: TextStyle(fontSize: 13),
+                  ),
+                )
+              else
+                _NewArrivalsGrid(products: newArrivals),
+
               const SizedBox(height: 24),
 
+              // ───────────────── Blogs
               const _SectionHeader(
                 title: 'Healing with Ayurveda',
                 subtitle: 'Blogs curated for holistic wellness',
               ),
               const SizedBox(height: 8),
-              const _BlogRow(),
+              if (loading)
+                const SimpleRowShimmer(height: 150)
+              else
+                const _BlogRow(),
               const SizedBox(height: 24),
 
+              // ───────────────── Awards
               const _SectionHeader(title: 'Awards & Recognition'),
               const SizedBox(height: 8),
-              const _AwardsRow(),
+              if (loading)
+                const SimpleRowShimmer(height: 80, radius: 40)
+              else
+                const _AwardsRow(),
               const SizedBox(height: 24),
 
+              // ───────────────── News / Featured On
               const _SectionHeader(
                 title: 'Featured On',
                 subtitle: 'News & media houses talking about us',
               ),
               const SizedBox(height: 8),
-              const _NewsTicker(),
+              if (loading)
+                const SimpleRowShimmer(height: 50, width: 120, radius: 30)
+              else
+                const _NewsTicker(),
             ],
           ),
         ),
@@ -158,38 +188,12 @@ class _HomePageState extends State<HomePage> {
   }
 }
 
-class _HomeTopBar extends StatelessWidget {
-  const _HomeTopBar();
+// ───────────────────────────────────────────────────────────────
+// Top Bar: Search + Wishlist + Cart
+// ───────────────────────────────────────────────────────────────
 
-  Widget searchBarWidget() {
-    return Container(
-      height: 44,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-            color: Colors.black.withOpacity(0.05),
-          ),
-        ],
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      child: Row(
-        children: const [
-          Icon(Icons.search, color: Colors.grey),
-          SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              'Search for "face wash"',
-              style: TextStyle(color: Colors.grey, fontSize: 13),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+class _HomeTopBar extends StatelessWidget {
+  const _HomeTopBar({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -200,11 +204,48 @@ class _HomeTopBar extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       child: Row(
         children: [
-          Expanded(child: searchBarWidget()),
+          // 🔍 Search box → SearchPage
+          Expanded(
+            child: InkWell(
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const SearchPage()),
+                );
+              },
+              child: Container(
+                height: 44,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                      color: Colors.black.withOpacity(0.05),
+                    ),
+                  ],
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Row(
+                  children: const [
+                    Icon(Icons.search, color: Colors.grey),
+                    SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Search for products...',
+                        style: TextStyle(color: Colors.grey, fontSize: 13),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
 
           const SizedBox(width: 10),
 
-          // ❤️ Wishlist with badge
+          // ❤️ Wishlist
           Stack(
             children: [
               IconButton(
@@ -216,23 +257,11 @@ class _HomeTopBar extends StatelessWidget {
                   );
                 },
               ),
-              if (wishlist.itemCount > 0)
-                Positioned(
-                  right: 4,
-                  top: 4,
-                  child: CircleAvatar(
-                    radius: 7,
-                    backgroundColor: Colors.pink,
-                    child: Text(
-                      wishlist.itemCount.toString(),
-                      style: const TextStyle(fontSize: 9, color: Colors.white),
-                    ),
-                  ),
-                ),
+              if (wishlist.itemCount > 0) _badge(wishlist.itemCount),
             ],
           ),
 
-          // 🛒 Cart with badge
+          // 🛒 Cart
           Stack(
             children: [
               IconButton(
@@ -244,28 +273,32 @@ class _HomeTopBar extends StatelessWidget {
                   );
                 },
               ),
-              if (cart.itemCount > 0)
-                Positioned(
-                  right: 4,
-                  top: 4,
-                  child: CircleAvatar(
-                    radius: 7,
-                    backgroundColor: Colors.red,
-                    child: Text(
-                      cart.itemCount.toString(),
-                      style: const TextStyle(fontSize: 9, color: Colors.white),
-                    ),
-                  ),
-                ),
+              if (cart.itemCount > 0) _badge(cart.itemCount),
             ],
           ),
         ],
       ),
     );
   }
+
+  Widget _badge(int count) => Positioned(
+    right: 4,
+    top: 4,
+    child: CircleAvatar(
+      radius: 8,
+      backgroundColor: Colors.red,
+      child: Text(
+        count.toString(),
+        style: const TextStyle(fontSize: 10, color: Colors.white),
+      ),
+    ),
+  );
 }
 
-/// Full-width, auto-scrolling promo banner
+// ───────────────────────────────────────────────────────────────
+// Promo Banner Carousel
+// ───────────────────────────────────────────────────────────────
+
 class _PromoBannerCarousel extends StatefulWidget {
   const _PromoBannerCarousel();
 
@@ -450,6 +483,10 @@ class _BannerData {
   });
 }
 
+// ───────────────────────────────────────────────────────────────
+// Section Header
+// ───────────────────────────────────────────────────────────────
+
 class _SectionHeader extends StatelessWidget {
   final String title;
   final String? subtitle;
@@ -491,45 +528,55 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
+// ───────────────────────────────────────────────────────────────
+// Category Row
+// ───────────────────────────────────────────────────────────────
+
 class _CategoryRow extends StatelessWidget {
   const _CategoryRow();
 
+  IconData _iconForCategory(String name) {
+    final key = name.toLowerCase();
+    if (key == 'all') return Icons.all_inclusive;
+    if (key.contains('special')) return Icons.local_offer;
+    if (key.contains('skin')) return Icons.spa;
+    if (key.contains('hair')) return Icons.face_6;
+    if (key.contains('women')) return Icons.female;
+    if (key.contains('immunity')) return Icons.health_and_safety;
+    if (key.contains('ortho')) return Icons.accessibility_new;
+    if (key.contains('diabetic')) return Icons.bloodtype;
+    if (key.contains('gut') || key.contains('liver')) {
+      return Icons.medical_information;
+    }
+    return Icons.spa_outlined;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final cartProvider = Provider.of<CartProvider>(context);
-    final selected = cartProvider.selectedCategory;
+    final productProvider = Provider.of<ProductProvider>(context);
+    final selected = productProvider.selectedCategory;
+    final categories = productProvider.categories;
 
-    // Business-priority order (Option A) + "All"
-    final categories = [
-      {'label': 'All', 'icon': Icons.all_inclusive},
-      {'label': 'Special Offers', 'icon': Icons.local_offer},
-      {'label': 'All Products', 'icon': Icons.grid_view},
-      // Future: {'label': 'Best Sellers', 'icon': Icons.trending_up},
-      {'label': 'Skin Care', 'icon': Icons.spa},
-      {'label': 'Hair Care', 'icon': Icons.face_6},
-      {'label': 'Women Health', 'icon': Icons.female},
-      {'label': 'Immunity Boosters', 'icon': Icons.health_and_safety},
-      {'label': 'Ortho Care', 'icon': Icons.accessibility_new},
-      {'label': 'Diabetic Care', 'icon': Icons.bloodtype},
-      {'label': 'Gut & Liver', 'icon': Icons.medical_information},
-    ];
+    if (productProvider.isLoading && categories.length <= 1) {
+      return const SizedBox(
+        height: 100,
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
 
     return SizedBox(
       height: 110,
       child: ListView.separated(
-        scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16),
+        scrollDirection: Axis.horizontal,
         itemBuilder: (_, i) {
-          final item = categories[i];
-          final label = item['label'] as String;
-          final icon = item['icon'] as IconData;
-
-          final bool isSelected =
-              selected == label || (selected == 'All' && label == 'All');
+          final label = categories[i];
+          final icon = _iconForCategory(label);
+          final bool isSelected = selected == label;
 
           return GestureDetector(
             onTap: () {
-              cartProvider.selectCategory(label);
+              productProvider.filterByCategory(label);
             },
             child: Column(
               children: [
@@ -543,14 +590,14 @@ class _CategoryRow extends StatelessWidget {
                       BoxShadow(
                         blurRadius: 6,
                         offset: const Offset(0, 2),
-                        color: Colors.black.withOpacity(0.08),
+                        color: Colors.black.withOpacity(0.06),
                       ),
                     ],
                   ),
                   child: Icon(
                     icon,
+                    size: 28,
                     color: isSelected ? Colors.white : kDarkGreen,
-                    size: 30,
                   ),
                 ),
                 const SizedBox(height: 6),
@@ -566,6 +613,7 @@ class _CategoryRow extends StatelessWidget {
                       fontWeight: isSelected
                           ? FontWeight.w700
                           : FontWeight.w500,
+                      color: isSelected ? kDarkGreen : Colors.black87,
                     ),
                   ),
                 ),
@@ -580,16 +628,27 @@ class _CategoryRow extends StatelessWidget {
   }
 }
 
+// ───────────────────────────────────────────────────────────────
+// Spotlight Product Card
+// ───────────────────────────────────────────────────────────────
+
 class _SpotlightProductCard extends StatelessWidget {
   final Product product;
   const _SpotlightProductCard({required this.product});
 
   @override
   Widget build(BuildContext context) {
+    final wishlist = Provider.of<WishlistProvider>(context);
+    final cart = Provider.of<CartProvider>(context, listen: false);
     final cs = Theme.of(context).colorScheme;
-    final wishlistProvider = Provider.of<WishlistProvider>(context);
+
+    final bool hasCompare =
+        product.compareAtPrice != null &&
+        product.compareAtPrice! > product.price;
+    final int discountPercent = _calculateDiscount(product);
 
     return InkWell(
+      borderRadius: BorderRadius.circular(18),
       onTap: () {
         Navigator.push(
           context,
@@ -599,18 +658,19 @@ class _SpotlightProductCard extends StatelessWidget {
         );
       },
       child: Container(
+        width: 170,
+        padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(18),
           boxShadow: [
             BoxShadow(
-              blurRadius: 10,
-              offset: const Offset(0, 4),
+              blurRadius: 8,
+              offset: const Offset(0, 3),
               color: Colors.black.withOpacity(0.08),
             ),
           ],
         ),
-        padding: const EdgeInsets.all(10),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -619,61 +679,68 @@ class _SpotlightProductCard extends StatelessWidget {
                 ClipRRect(
                   borderRadius: BorderRadius.circular(14),
                   child: AspectRatio(
-                    aspectRatio: 1.2,
-                    child: Image.network(product.imageUrl, fit: BoxFit.cover),
+                    aspectRatio: 1,
+                    child: Image.network(
+                      product.imageUrl,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Container(
+                        alignment: Alignment.center,
+                        color: Colors.grey.shade200,
+                        child: const Icon(Icons.broken_image),
+                      ),
+                    ),
                   ),
                 ),
 
-                /// ❤️ Wishlist button
+                // ❤️ Wishlist
                 Positioned(
                   right: 6,
                   top: 6,
-                  child: CircleAvatar(
-                    radius: 16,
-                    backgroundColor: Colors.white,
-                    child: IconButton(
-                      alignment: Alignment.center,
-                      padding: EdgeInsets.zero,
-                      icon: Icon(
-                        wishlistProvider.isInWishlist(product)
+                  child: GestureDetector(
+                    onTap: () => wishlist.toggleWishlist(product),
+                    child: CircleAvatar(
+                      radius: 15,
+                      backgroundColor: Colors.white,
+                      child: Icon(
+                        wishlist.isInWishlist(product)
                             ? Icons.favorite
                             : Icons.favorite_border,
-                        size: 18,
+                        size: 16,
                         color: Colors.pink,
                       ),
-                      onPressed: () {
-                        wishlistProvider.toggleWishlist(product);
-                      },
                     ),
                   ),
                 ),
 
-                Positioned(
-                  left: 6,
-                  top: 6,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 3,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.shade400,
-                      borderRadius: BorderRadius.circular(50),
-                    ),
-                    child: const Text(
-                      'FLAT 20% OFF',
-                      style: TextStyle(
-                        fontSize: 9,
-                        color: Colors.white,
-                        fontWeight: FontWeight.w700,
+                // 🏷 Offer badge
+                if (hasCompare && discountPercent > 0)
+                  Positioned(
+                    left: 6,
+                    top: 6,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.shade400,
+                        borderRadius: BorderRadius.circular(40),
+                      ),
+                      child: Text(
+                        '$discountPercent% OFF',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 9,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
                   ),
-                ),
               ],
             ),
 
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
+
             Text(
               product.name,
               maxLines: 2,
@@ -681,34 +748,49 @@ class _SpotlightProductCard extends StatelessWidget {
               style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
             ),
 
-            const Spacer(),
+            const SizedBox(height: 6),
 
             Row(
               children: [
                 Text(
-                  '₹${product.price}',
+                  '₹${product.price.toStringAsFixed(0)}',
                   style: TextStyle(
-                    fontSize: 16,
+                    fontSize: 15,
                     fontWeight: FontWeight.bold,
                     color: cs.primary,
                   ),
                 ),
+                if (hasCompare)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 4),
+                    child: Text(
+                      '₹${product.compareAtPrice!.toStringAsFixed(0)}',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Colors.grey,
+                        decoration: TextDecoration.lineThrough,
+                      ),
+                    ),
+                  ),
                 const Spacer(),
-                IconButton(
-                  icon: const Icon(Icons.add_shopping_cart),
-                  onPressed: () {
-                    Provider.of<CartProvider>(
-                      context,
-                      listen: false,
-                    ).addToCart(product);
-
+                GestureDetector(
+                  onTap: () {
+                    cart.addToCart(product);
+                    if (wishlist.isInWishlist(product)) {
+                      wishlist.toggleWishlist(product);
+                    }
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
                         content: Text('${product.name} added to cart!'),
-                        duration: const Duration(milliseconds: 900),
+                        duration: const Duration(milliseconds: 700),
                       ),
                     );
                   },
+                  child: const CircleAvatar(
+                    radius: 15,
+                    backgroundColor: kDarkGreen,
+                    child: Icon(Icons.add, size: 16, color: Colors.white),
+                  ),
                 ),
               ],
             ),
@@ -717,7 +799,17 @@ class _SpotlightProductCard extends StatelessWidget {
       ),
     );
   }
+
+  int _calculateDiscount(Product p) {
+    if (p.compareAtPrice == null || p.compareAtPrice! <= p.price) return 0;
+    final d = ((p.compareAtPrice! - p.price) / p.compareAtPrice!) * 100;
+    return d.round();
+  }
 }
+
+// ───────────────────────────────────────────────────────────────
+// Mid Promo Banner
+// ───────────────────────────────────────────────────────────────
 
 class _MidPromoBanner extends StatelessWidget {
   const _MidPromoBanner();
@@ -750,14 +842,26 @@ class _MidPromoBanner extends StatelessWidget {
   }
 }
 
-/// Grid for "New Arrivals"
+// ───────────────────────────────────────────────────────────────
+// New Arrivals Grid (reuses same card style as spotlight)
+// ───────────────────────────────────────────────────────────────
+
 class _NewArrivalsGrid extends StatelessWidget {
   final List<Product> products;
-
   const _NewArrivalsGrid({required this.products});
 
   @override
   Widget build(BuildContext context) {
+    if (products.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 16),
+        child: Text(
+          'No new arrivals to show right now.',
+          style: TextStyle(fontSize: 13),
+        ),
+      );
+    }
+
     final isWide = MediaQuery.of(context).size.width > 600;
     final crossAxisCount = isWide ? 3 : 2;
 
@@ -781,6 +885,10 @@ class _NewArrivalsGrid extends StatelessWidget {
     );
   }
 }
+
+// ───────────────────────────────────────────────────────────────
+// Blog Row
+// ───────────────────────────────────────────────────────────────
 
 class _BlogRow extends StatelessWidget {
   const _BlogRow();
@@ -840,6 +948,10 @@ class _BlogRow extends StatelessWidget {
   }
 }
 
+// ───────────────────────────────────────────────────────────────
+// Awards Row
+// ───────────────────────────────────────────────────────────────
+
 class _AwardsRow extends StatelessWidget {
   const _AwardsRow();
 
@@ -878,7 +990,10 @@ class _AwardsRow extends StatelessWidget {
   }
 }
 
-/// Auto-scrolling small media logos row
+// ───────────────────────────────────────────────────────────────
+// News Ticker
+// ───────────────────────────────────────────────────────────────
+
 class _NewsTicker extends StatefulWidget {
   const _NewsTicker();
 

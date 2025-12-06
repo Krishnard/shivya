@@ -6,6 +6,8 @@ import '../place holders/address_page.dart';
 import '../place holders/help_support_page.dart';
 import '../place holders/order_page.dart';
 import '../pages/setting_page.dart';
+import '../pages/login_page.dart';
+
 class AccountPage extends StatelessWidget {
   const AccountPage({super.key});
 
@@ -31,22 +33,10 @@ class AccountPage extends StatelessWidget {
   }) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: Colors.green.shade100,
-            width: 1.1,
-          ),
-          boxShadow: [
-            BoxShadow(
-              blurRadius: 8,
-              offset: const Offset(0, 3),
-              color: Colors.black.withOpacity(0.06),
-            ),
-          ],
-        ),
+      child: Material(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        elevation: 1,
         child: ListTile(
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(18),
@@ -57,10 +47,7 @@ class AccountPage extends StatelessWidget {
             style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
           ),
           subtitle: subtitle != null
-              ? Text(
-                  subtitle,
-                  style: const TextStyle(fontSize: 12),
-                )
+              ? Text(subtitle, style: const TextStyle(fontSize: 12))
               : null,
           trailing: const Icon(Icons.chevron_right),
           onTap: onTap,
@@ -71,14 +58,12 @@ class AccountPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final auth = Provider.of<AuthProvider>(context, listen: false);
-    final userName = auth.userName ?? "Guest User";
-    final email = auth.userEmail ?? "Sign in to continue";
+    final auth = Provider.of<AuthProvider>(context, listen: true);
 
     return Scaffold(
       backgroundColor: const Color(0xFFF4F7F6),
       appBar: AppBar(
-        title: const Text("My Account", style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text("My Account"),
         elevation: 0,
         backgroundColor: const Color(0xFFE8F7F3),
       ),
@@ -87,7 +72,7 @@ class AccountPage extends StatelessWidget {
           children: [
             const SizedBox(height: 10),
 
-            // ⭐ Profile Section
+            /// PROFILE CARD
             Container(
               padding: const EdgeInsets.all(16),
               margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -108,32 +93,49 @@ class AccountPage extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          userName,
+                          auth.isLoggedIn ? auth.userName ?? "User" : "Guest User",
                           style: const TextStyle(
                             fontSize: 17,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
                         Text(
-                          email,
+                          auth.isLoggedIn
+                              ? (auth.userEmail ?? auth.phoneNumber ?? "Profile Updated")
+                              : "Sign in to continue",
                           style: const TextStyle(
                             fontSize: 12,
                             color: Colors.black54,
                           ),
                         ),
+
+                        /// LOGIN Button if Guest
+                        if (!auth.isLoggedIn)
+                          TextButton(
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(builder: (_) => const LoginPage()),
+                              );
+                            },
+                            child: const Text(
+                              "Login / Signup",
+                              style: TextStyle(fontSize: 13),
+                            ),
+                          ),
                       ],
                     ),
                   ),
-                  Icon(Icons.edit_outlined, color: Colors.green.shade800),
                 ],
               ),
             ),
 
             const SizedBox(height: 18),
 
-            // ⭐ Orders Card (Wallet removed as requested)
+            /// Orders Card
             GestureDetector(
               onTap: () {
+                if (!auth.isLoggedIn) return _askLogin(context);
                 Navigator.push(
                   context,
                   MaterialPageRoute(builder: (_) => const OrdersPage()),
@@ -161,10 +163,7 @@ class AccountPage extends StatelessWidget {
                     const SizedBox(height: 6),
                     const Text(
                       "Orders",
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 14,
-                      ),
+                      style: TextStyle(fontWeight: FontWeight.w600),
                     ),
                   ],
                 ),
@@ -173,23 +172,32 @@ class AccountPage extends StatelessWidget {
 
             const SizedBox(height: 20),
             sectionTitle("YOUR INFORMATION"),
+
             menuTile(
               icon: Icons.location_on_outlined,
               title: "Address Book",
-              subtitle: "Edit & Add new addresses",
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const AddressPage()),
-              ),
-            ),
-            menuTile(
-              icon: Icons.phone_android,
-              title: "Contact Details",
-              subtitle: "Phone number & Email",
-              onTap: () {},
+              subtitle: auth.isLoggedIn
+                  ? "Edit & Add new addresses"
+                  : "Login required",
+              onTap: () {
+                if (!auth.isLoggedIn) return _askLogin(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const AddressPage()),
+                );
+              },
             ),
 
+            if (auth.isLoggedIn)
+              menuTile(
+                icon: Icons.phone_android,
+                title: "Contact Details",
+                subtitle: auth.userEmail ?? auth.phoneNumber ?? "",
+                onTap: () {},
+              ),
+
             sectionTitle("OTHER INFORMATION"),
+
             menuTile(
               icon: Icons.support_agent,
               title: "Help & Support",
@@ -198,26 +206,39 @@ class AccountPage extends StatelessWidget {
                 MaterialPageRoute(builder: (_) => const HelpSupportPage()),
               ),
             ),
+
+            menuTile(
+              icon: Icons.settings_outlined,
+              title: "Settings",
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const SettingsPage()),
+              ),
+            ),
+
             menuTile(
               icon: Icons.star_border,
               title: "Rate App",
               onTap: () {},
             ),
-            menuTile(
-              icon: Icons.settings_outlined,
-              title: "Settings",
-              onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const SettingsPage()),
-                );
-              },
-            ),
+
+            if (auth.isLoggedIn)
+              menuTile(
+                icon: Icons.logout,
+                title: "Logout",
+                onTap: () => auth.logout(),
+              ),
 
             const SizedBox(height: 28),
           ],
         ),
       ),
+    );
+  }
+
+  void _askLogin(BuildContext context) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text("Please login to access this feature")),
     );
   }
 }
