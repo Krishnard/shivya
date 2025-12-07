@@ -2,9 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../providers/cart_provider.dart';
-import '../providers/auth_provider.dart';
 import '../models/product.dart';
-import 'login_page.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class CartPage extends StatelessWidget {
   const CartPage({super.key});
@@ -137,28 +136,62 @@ class CartPage extends StatelessWidget {
                   width: double.infinity,
                   height: 48,
                   child: FilledButton(
-                    onPressed: () {
-                      final auth = Provider.of<AuthProvider>(
+                    onPressed: () async {
+                      // 🔹 Direct checkout without app login
+                      final cart = Provider.of<CartProvider>(
                         context,
                         listen: false,
                       );
-                      if (!auth.isLoggedIn) {
-                        // force login before checkout
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => const LoginPage(),
+                      final items = cart.cartItems;
+
+                      if (items.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Your cart is empty')),
+                        );
+                        return;
+                      }
+
+                      final parts = <String>[];
+
+                      for (final item in items) {
+                        final product = item.product;
+                        final variantIdRaw = _getVariantIdForCart(product);
+                        if (variantIdRaw == null || variantIdRaw.isEmpty) {
+                          continue;
+                        }
+
+                        final variantId = _normalizeShopifyId(variantIdRaw);
+                        final qty = item.quantity;
+                        if (qty <= 0) continue;
+
+                        parts.add('$variantId:$qty');
+                      }
+
+                      if (parts.isEmpty) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Could not build checkout link.'),
                           ),
                         );
                         return;
                       }
 
-                      // TODO: integrate real checkout
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text("Checkout coming soon!"),
-                        ),
+                      final uri = Uri.parse(
+                        'https://shivyahealthcare.com/cart/${parts.join(',')}',
                       );
+
+                      final ok = await launchUrl(
+                        uri,
+                        mode: LaunchMode.inAppBrowserView,
+                      );
+
+                      if (!ok) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Could not open checkout.'),
+                          ),
+                        );
+                      }
                     },
                     child: const Text(
                       "Checkout",
@@ -193,5 +226,36 @@ class CartPage extends StatelessWidget {
         ),
       ],
     );
+  }
+
+  // ───────────────────────────────────────────────────────────────
+  // Shopify checkout helpers
+  // ───────────────────────────────────────────────────────────────
+
+  String _normalizeShopifyId(String id) {
+    // "gid://shopify/ProductVariant/1234567890" -> "1234567890"
+    if (id.startsWith('gid://')) {
+      return id.split('/').last;
+    }
+    return id;
+  }
+
+  /// Decide which variant ID to use for checkout.
+  /// Right now: first variant if available, else fall back to product.id
+  String? _getVariantIdForCart(Product product) {
+    try {
+      if (product.variants.isNotEmpty) {
+        final v = product.variants.first;
+        final id = (v['id'] as String?) ?? '';
+        if (id.isNotEmpty) {
+          return id;
+        }
+      }
+    } catch (_) {
+      // ignore and fall back below
+    }
+
+    // fallback – sometimes product.id may already be a variant id
+    return product.id.isNotEmpty ? product.id : null;
   }
 }

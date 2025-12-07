@@ -11,139 +11,174 @@ class LoginPage extends StatefulWidget {
 }
 
 class _LoginPageState extends State<LoginPage> {
-  final TextEditingController _phoneController = TextEditingController();
-  final TextEditingController _otpController = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
+  final _emailCtrl = TextEditingController();
+  final _passwordCtrl = TextEditingController();
+  bool _obscure = true;
 
-  bool _otpSent = false;
-  bool _loading = false;
-
-  void _sendOtp() {
-    final phone = _phoneController.text.trim();
-    if (phone.length < 10) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter a valid phone number')),
-      );
-      return;
-    }
-    setState(() {
-      _otpSent = true;
-    });
-    // Here we would call Firebase verifyPhoneNumber in future
+  @override
+  void dispose() {
+    _emailCtrl.dispose();
+    _passwordCtrl.dispose();
+    super.dispose();
   }
 
-  void _verifyOtp() {
-    final otp = _otpController.text.trim();
-    if (otp.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter OTP')),
-      );
-      return;
-    }
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
 
-    setState(() {
-      _loading = true;
-    });
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final email = _emailCtrl.text;
+    final password = _passwordCtrl.text;
 
-    // Fake verification: accept any OTP
-    Future.delayed(const Duration(milliseconds: 600), () {
-      final phone = _phoneController.text.trim();
-      Provider.of<AuthProvider>(context, listen: false)
-          .loginWithPhone(phone);
+    try {
+      await auth.login(email, password);
 
-      setState(() => _loading = false);
-
-      Navigator.pop(context); // go back to where user came from
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Logged in successfully')),
       );
-    });
+
+      Navigator.pop(context); // go back to previous page (e.g. cart)
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            e.toString().replaceFirst('Exception: ', ''),
+          ),
+        ),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    final auth = Provider.of<AuthProvider>(context);
+
     return Scaffold(
-      backgroundColor: const Color(0xFFE8F7F3),
       appBar: AppBar(
-        elevation: 0,
-        backgroundColor: const Color(0xFFE8F7F3),
-        leading: IconButton(
-          icon: const Icon(Icons.close),
-          onPressed: () => Navigator.pop(context),
-        ),
+        title: const Text('Login'),
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black87,
+        elevation: 0.4,
+        centerTitle: true,
       ),
-      body: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Login / Sign up',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.w800,
+      body: Container(
+        color: const Color(0xFFE8F7F3),
+        padding: const EdgeInsets.all(16),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 400),
+            child: Card(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
               ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Enter your phone number to continue',
-              style: TextStyle(fontSize: 13, color: Colors.black54),
-            ),
-            const SizedBox(height: 24),
+              elevation: 4,
+              child: Padding(
+                padding: const EdgeInsets.all(16),
+                child: Form(
+                  key: _formKey,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        'Welcome back',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      const Text(
+                        'Login with the same email and password you use on the website.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 12, color: Colors.black54),
+                      ),
+                      const SizedBox(height: 16),
 
-            // PHONE FIELD
-            TextField(
-              controller: _phoneController,
-              keyboardType: TextInputType.phone,
-              decoration: InputDecoration(
-                prefixText: '+91 ',
-                labelText: 'Phone number',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-              ),
-            ),
+                      // Email
+                      TextFormField(
+                        controller: _emailCtrl,
+                        keyboardType: TextInputType.emailAddress,
+                        decoration: const InputDecoration(
+                          labelText: 'Email',
+                          prefixIcon: Icon(Icons.email_outlined),
+                          border: OutlineInputBorder(),
+                        ),
+                        validator: (v) {
+                          if (v == null || v.trim().isEmpty) {
+                            return 'Please enter your email';
+                          }
+                          if (!v.contains('@')) {
+                            return 'Enter a valid email';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 12),
 
-            const SizedBox(height: 16),
+                      // Password
+                      TextFormField(
+                        controller: _passwordCtrl,
+                        obscureText: _obscure,
+                        decoration: InputDecoration(
+                          labelText: 'Password',
+                          prefixIcon: const Icon(Icons.lock_outline),
+                          border: const OutlineInputBorder(),
+                          suffixIcon: IconButton(
+                            icon: Icon(
+                              _obscure
+                                  ? Icons.visibility_off
+                                  : Icons.visibility,
+                            ),
+                            onPressed: () {
+                              setState(() => _obscure = !_obscure);
+                            },
+                          ),
+                        ),
+                        validator: (v) {
+                          if (v == null || v.isEmpty) {
+                            return 'Please enter your password';
+                          }
+                          if (v.length < 6) {
+                            return 'At least 6 characters';
+                          }
+                          return null;
+                        },
+                      ),
+                      const SizedBox(height: 16),
 
-            if (_otpSent) ...[
-              TextField(
-                controller: _otpController,
-                keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  labelText: 'Enter OTP',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(14),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 44,
+                        child: ElevatedButton(
+                          onPressed: auth.isLoading ? null : _submit,
+                          child: auth.isLoading
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor:
+                                        AlwaysStoppedAnimation(Colors.white),
+                                  ),
+                                )
+                              : const Text('Login'),
+                        ),
+                      ),
+
+                      const SizedBox(height: 8),
+                      const Text(
+                        'If you don\'t have an account, create one on the website. You can use the same login here.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontSize: 11, color: Colors.black54),
+                      ),
+                    ],
                   ),
                 ),
               ),
-              const SizedBox(height: 16),
-            ],
-
-            const Spacer(),
-
-            SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: FilledButton(
-                onPressed: _loading
-                    ? null
-                    : _otpSent
-                        ? _verifyOtp
-                        : _sendOtp,
-                child: _loading
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : Text(_otpSent ? 'Verify & Continue' : 'Send OTP'),
-              ),
             ),
-            const SizedBox(height: 18),
-          ],
+          ),
         ),
       ),
     );

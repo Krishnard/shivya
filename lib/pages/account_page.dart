@@ -1,15 +1,46 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
-import '../providers/auth_provider.dart';
-import '../place holders/address_page.dart';
 import '../place holders/help_support_page.dart';
-import '../place holders/order_page.dart';
 import '../pages/setting_page.dart';
-import '../pages/login_page.dart';
+import 'package:flutter/foundation.dart';
+
 
 class AccountPage extends StatelessWidget {
   const AccountPage({super.key});
+
+  // Shopify account URL – handles login, signup, orders, addresses, etc.
+  static final Uri _accountUri = Uri.parse(
+    'https://shivyahealthcare.com/account',
+  );
+
+  Future<void> _openAccount(BuildContext context) async {
+    // On web: open in SAME tab so user can use browser Back to return
+    if (kIsWeb) {
+      final ok = await launchUrl(
+        _accountUri,
+        webOnlyWindowName: '_self', // replace current tab
+      );
+
+      if (!ok && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not open account page in browser.'),
+          ),
+        );
+      }
+      return;
+    }
+
+    // On mobile app: open in in-app browser view (Chrome Custom Tab / SFSafariView)
+    final ok = await launchUrl(_accountUri, mode: LaunchMode.inAppBrowserView);
+
+    if (!ok && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not open account page.')),
+      );
+    }
+  }
 
   Widget sectionTitle(String title) {
     return Padding(
@@ -58,8 +89,6 @@ class AccountPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final auth = Provider.of<AuthProvider>(context, listen: true);
-
     return Scaffold(
       backgroundColor: const Color(0xFFF4F7F6),
       appBar: AppBar(
@@ -85,44 +114,37 @@ class AccountPage extends StatelessWidget {
                   CircleAvatar(
                     radius: 30,
                     backgroundColor: Colors.green.shade100,
-                    child: Icon(Icons.person, size: 34, color: Colors.green.shade800),
+                    child: Icon(
+                      Icons.person,
+                      size: 34,
+                      color: Colors.green.shade800,
+                    ),
                   ),
                   const SizedBox(width: 16),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          auth.isLoggedIn ? auth.userName ?? "User" : "Guest User",
-                          style: const TextStyle(
+                        const Text(
+                          "Guest User",
+                          style: TextStyle(
                             fontSize: 17,
                             fontWeight: FontWeight.bold,
                           ),
                         ),
-                        Text(
-                          auth.isLoggedIn
-                              ? (auth.userEmail ?? auth.phoneNumber ?? "Profile Updated")
-                              : "Sign in to continue",
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: Colors.black54,
-                          ),
+                        const Text(
+                          "Login / signup with your Shivya account",
+                          style: TextStyle(fontSize: 12, color: Colors.black54),
                         ),
 
-                        /// LOGIN Button if Guest
-                        if (!auth.isLoggedIn)
-                          TextButton(
-                            onPressed: () {
-                              Navigator.push(
-                                context,
-                                MaterialPageRoute(builder: (_) => const LoginPage()),
-                              );
-                            },
-                            child: const Text(
-                              "Login / Signup",
-                              style: TextStyle(fontSize: 13),
-                            ),
+                        /// LOGIN Button – opens Shopify /account
+                        TextButton(
+                          onPressed: () => _openAccount(context),
+                          child: const Text(
+                            "Login / Signup",
+                            style: TextStyle(fontSize: 13),
                           ),
+                        ),
                       ],
                     ),
                   ),
@@ -132,15 +154,9 @@ class AccountPage extends StatelessWidget {
 
             const SizedBox(height: 18),
 
-            /// Orders Card
+            /// Orders Card – also open Shopify account
             GestureDetector(
-              onTap: () {
-                if (!auth.isLoggedIn) return _askLogin(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const OrdersPage()),
-                );
-              },
+              onTap: () => _openAccount(context),
               child: Container(
                 width: double.infinity,
                 margin: const EdgeInsets.symmetric(horizontal: 16),
@@ -158,8 +174,11 @@ class AccountPage extends StatelessWidget {
                 ),
                 child: Column(
                   children: [
-                    Icon(Icons.shopping_bag_outlined,
-                        size: 28, color: Colors.green.shade800),
+                    Icon(
+                      Icons.shopping_bag_outlined,
+                      size: 28,
+                      color: Colors.green.shade800,
+                    ),
                     const SizedBox(height: 6),
                     const Text(
                       "Orders",
@@ -173,28 +192,21 @@ class AccountPage extends StatelessWidget {
             const SizedBox(height: 20),
             sectionTitle("YOUR INFORMATION"),
 
+            // Address Book -> open Shopify account page
             menuTile(
               icon: Icons.location_on_outlined,
               title: "Address Book",
-              subtitle: auth.isLoggedIn
-                  ? "Edit & Add new addresses"
-                  : "Login required",
-              onTap: () {
-                if (!auth.isLoggedIn) return _askLogin(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const AddressPage()),
-                );
-              },
+              subtitle: "Manage your addresses in Shivya account",
+              onTap: () => _openAccount(context),
             ),
 
-            if (auth.isLoggedIn)
-              menuTile(
-                icon: Icons.phone_android,
-                title: "Contact Details",
-                subtitle: auth.userEmail ?? auth.phoneNumber ?? "",
-                onTap: () {},
-              ),
+            // Contact details -> also let Shopify handle
+            menuTile(
+              icon: Icons.phone_android,
+              title: "Contact Details",
+              subtitle: "Update email / phone in your Shivya account",
+              onTap: () => _openAccount(context),
+            ),
 
             sectionTitle("OTHER INFORMATION"),
 
@@ -219,26 +231,15 @@ class AccountPage extends StatelessWidget {
             menuTile(
               icon: Icons.star_border,
               title: "Rate App",
-              onTap: () {},
+              onTap: () {
+                // TODO: implement store rating
+              },
             ),
-
-            if (auth.isLoggedIn)
-              menuTile(
-                icon: Icons.logout,
-                title: "Logout",
-                onTap: () => auth.logout(),
-              ),
 
             const SizedBox(height: 28),
           ],
         ),
       ),
-    );
-  }
-
-  void _askLogin(BuildContext context) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Please login to access this feature")),
     );
   }
 }

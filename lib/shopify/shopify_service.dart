@@ -42,6 +42,54 @@ class ShopifyService {
     return body;
   }
 
+  // Low-level helper to call Shopify Storefront GraphQL
+  
+
+  // ShopifyService.dart  (inside class ShopifyService)
+
+  Future<String> loginCustomer(String email, String password) async {
+    const String mutation = r'''
+    mutation customerAccessTokenCreate($input: CustomerAccessTokenCreateInput!) {
+      customerAccessTokenCreate(input: $input) {
+        customerAccessToken {
+          accessToken
+          expiresAt
+        }
+        userErrors {
+          field
+          message
+        }
+      }
+    }
+  ''';
+
+    final variables = {
+      'input': {'email': email.trim(), 'password': password},
+    };
+
+    // ⬇️ Replace `_postGraphQL` with your actual helper name if different
+    final data = await _post(mutation, variables: variables);
+
+    final create = data['customerAccessTokenCreate'];
+    if (create == null) {
+      throw Exception('Unexpected response from Shopify');
+    }
+
+    final errors = (create['userErrors'] as List?) ?? [];
+    if (errors.isNotEmpty) {
+      // grab first error message
+      final msg = errors.first['message']?.toString() ?? 'Login failed';
+      throw Exception(msg);
+    }
+
+    final token = create['customerAccessToken']?['accessToken'] as String?;
+    if (token == null || token.isEmpty) {
+      throw Exception('Login failed – no token returned');
+    }
+
+    return token;
+  }
+
   // ─────────────────────────────────────────────────────────────
   // Products
   // ─────────────────────────────────────────────────────────────

@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -11,7 +13,7 @@ import '../pages/wishlist_page.dart';
 import '../providers/wishlist_provider.dart';
 import '../pages/search_page.dart';
 
-// Optional shimmer widgets (used during loading)
+// Shimmer widgets (used during loading)
 import '../widgets/shimmer/topbar_shimmer.dart';
 import '../widgets/shimmer/banner_shimmer.dart';
 import '../widgets/shimmer/category_shimmer.dart';
@@ -19,8 +21,9 @@ import '../widgets/shimmer/product_horizontal_shimmer.dart';
 import '../widgets/shimmer/simple_row_shimmer.dart';
 
 import '../pages/healing_blogs_pages.dart';
-
 import '../shopify/shopify_service.dart';
+import '../pages/splash_page.dart';
+
 
 const Color kPrimaryGreen = Color(0xFF99FF99); // light green
 const Color kBgTint = Color(0xFFE8F7F3); // soft mint background
@@ -52,15 +55,34 @@ class _HomePageState extends State<HomePage> {
     final String? error = productProvider.error;
     final List<Product> products = productProvider.products;
 
-    // 🔥 Spotlight = products where metafield custom.spotlight == true
-    // Spotlight section - simple version: just take first few products
-    final List<Product> spotlight = products.take(5).toList();
+    // 4️⃣ Trending now = random subset of products (changes order)
+    final List<Product> trending = () {
+      final tmp = List<Product>.from(products);
+      tmp.shuffle(Random());
+      return tmp.take(10).toList();
+    }();
 
-    // New arrivals = everything not in spotlight (limit 10)
-    final List<Product> newArrivals = products
-        .where((p) => !spotlight.contains(p))
-        .take(10)
-        .toList();
+    // 6️⃣ Combos = products whose name looks like combo/offer/pack/kit
+    final List<Product> combosProducts = () {
+      final candidates = products.where((p) {
+        final n = p.name.toLowerCase();
+        return n.contains('combo') ||
+            n.contains('pack') ||
+            n.contains('kit') ||
+            n.contains('offer');
+      }).toList();
+
+      if (candidates.isNotEmpty) {
+        final tmp = List<Product>.from(candidates);
+        tmp.shuffle(Random());
+        return tmp.take(8).toList();
+      }
+
+      // Fallback: random few products
+      final tmp = List<Product>.from(products);
+      tmp.shuffle(Random());
+      return tmp.take(8).toList();
+    }();
 
     return Container(
       color: kBgTint,
@@ -70,31 +92,42 @@ class _HomePageState extends State<HomePage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ───────────────── Top Bar (Search + Wishlist + Cart)
+              // 1️⃣ Top bar
               if (loading) const TopBarShimmer() else const _HomeTopBar(),
               const SizedBox(height: 12),
 
-              // ───────────────── Banner
+              // 2️⃣ Hero banner carousel
               if (loading)
                 const BannerShimmer()
               else
                 const _PromoBannerCarousel(),
+              const SizedBox(height: 12),
+
+              // 3️⃣ Quick goals (collections focus)
+              const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16.0),
+                child: Text(
+                  'What are you focusing on today?',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                ),
+              ),
+              const SizedBox(height: 6),
+              const _GoalChipsRow(),
               const SizedBox(height: 16),
 
-              // ───────────────── Categories
+              // 5️⃣ Shop by Category (like screenshot, before products)
               const _SectionHeader(title: 'Shop by Category'),
-              const SizedBox(height: 10),
-              if (loading) const CategoryShimmer() else const _CategoryRow(),
+              const SizedBox(height: 8),
+              if (loading) const CategoryShimmer() else const _CategoryGrid(),
               const SizedBox(height: 20),
 
-              // ───────────────── Spotlight Section
+              // 4️⃣ Trending now (below category grid)
               const _SectionHeader(
-                title: 'In the Spotlight',
-                subtitle: 'Unmissable favorites you’ll adore',
+                title: 'Trending now',
+                subtitle: 'Freshly added wellness picks',
               ),
               const SizedBox(height: 8),
-
-              if (loading)
+              if (loading && products.isEmpty)
                 const ProductHorizontalShimmer()
               else if (error != null)
                 Padding(
@@ -104,56 +137,39 @@ class _HomePageState extends State<HomePage> {
                     style: const TextStyle(color: Colors.red),
                   ),
                 )
-              else if (spotlight.isEmpty)
+              else if (trending.isEmpty)
                 const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 16),
                   child: Text(
-                    'No spotlight products available right now.',
+                    'No products to show right now.',
                     style: TextStyle(fontSize: 13),
                   ),
                 )
               else
-                SizedBox(
-                  height: 265,
-                  child: ListView.separated(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    scrollDirection: Axis.horizontal,
-                    itemBuilder: (_, i) =>
-                        _SpotlightProductCard(product: spotlight[i]),
-                    separatorBuilder: (_, __) => const SizedBox(width: 14),
-                    itemCount: spotlight.length,
-                  ),
-                ),
-
+                _TrendingGrid(products: trending),
               const SizedBox(height: 20),
 
-              // ───────────────── Mid Promo Banner
-              const _MidPromoBanner(),
-              const SizedBox(height: 20),
-
-              // ───────────────── New Arrivals
+              // 6️⃣ Combos (realish combos/offers)
               const _SectionHeader(
-                title: 'New Arrivals',
-                subtitle: 'Freshly added wellness picks',
+                title: 'Combos',
+                subtitle: 'Save more with curated packs',
               ),
               const SizedBox(height: 8),
-
               if (loading && products.isEmpty)
                 const ProductHorizontalShimmer()
-              else if (!loading && newArrivals.isEmpty)
+              else if (combosProducts.isEmpty)
                 const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 16),
                   child: Text(
-                    'No new arrivals available at the moment.',
+                    'No combos available right now.',
                     style: TextStyle(fontSize: 13),
                   ),
                 )
               else
-                _NewArrivalsGrid(products: newArrivals),
-
+                _CombosRow(products: combosProducts),
               const SizedBox(height: 24),
 
-              // ───────────────── Blogs
+              // 7️⃣ Blogs
               const _SectionHeader(
                 title: 'Healing with Ayurveda',
                 subtitle: 'Blogs curated for holistic wellness',
@@ -165,7 +181,7 @@ class _HomePageState extends State<HomePage> {
                 const _BlogRow(),
               const SizedBox(height: 24),
 
-              // ───────────────── Awards
+              // 8️⃣ Awards
               const _SectionHeader(title: 'Awards & Recognition'),
               const SizedBox(height: 8),
               if (loading)
@@ -174,7 +190,7 @@ class _HomePageState extends State<HomePage> {
                 const _AwardsRow(),
               const SizedBox(height: 24),
 
-              // ───────────────── News / Featured On
+              // 9️⃣ Featured On / News
               const _SectionHeader(
                 title: 'Featured On',
                 subtitle: 'News & media houses talking about us',
@@ -184,6 +200,10 @@ class _HomePageState extends State<HomePage> {
                 const SimpleRowShimmer(height: 50, width: 120, radius: 30)
               else
                 const _NewsTicker(),
+              const SizedBox(height: 24),
+
+              // 🔟 Trust strip / footer info
+              const _TrustStrip(),
             ],
           ),
         ),
@@ -193,7 +213,7 @@ class _HomePageState extends State<HomePage> {
 }
 
 // ───────────────────────────────────────────────────────────────
-// Top Bar: Search + Wishlist + Cart
+// Top Bar: Logo + Search + Wishlist + Cart
 // ───────────────────────────────────────────────────────────────
 
 class _HomeTopBar extends StatelessWidget {
@@ -218,7 +238,7 @@ class _HomeTopBar extends StatelessWidget {
                 );
               },
               child: Container(
-                height: 44,
+                height: 40,
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(24),
@@ -233,12 +253,12 @@ class _HomeTopBar extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 child: Row(
                   children: const [
-                    Icon(Icons.search, color: Colors.grey),
-                    SizedBox(width: 8),
+                    Icon(Icons.search, color: Colors.grey, size: 20),
+                    SizedBox(width: 6),
                     Expanded(
                       child: Text(
                         'Search for products...',
-                        style: TextStyle(color: Colors.grey, fontSize: 13),
+                        style: TextStyle(color: Colors.grey, fontSize: 12),
                       ),
                     ),
                   ],
@@ -300,7 +320,7 @@ class _HomeTopBar extends StatelessWidget {
 }
 
 // ───────────────────────────────────────────────────────────────
-// Promo Banner Carousel
+// Hero Promo Banner Carousel
 // ───────────────────────────────────────────────────────────────
 
 class _PromoBannerCarousel extends StatefulWidget {
@@ -422,7 +442,9 @@ class _PromoBannerCarouselState extends State<_PromoBannerCarousel> {
                             ),
                             const SizedBox(height: 12),
                             ElevatedButton(
-                              onPressed: () {},
+                              onPressed: () {
+                                // TODO: navigate to offers / combos collection
+                              },
                               style: ElevatedButton.styleFrom(
                                 backgroundColor: Colors.white,
                                 foregroundColor: kDarkGreen,
@@ -488,6 +510,155 @@ class _BannerData {
 }
 
 // ───────────────────────────────────────────────────────────────
+// Goal Chips Row – 4–5 random collections/categories
+// ───────────────────────────────────────────────────────────────
+
+class _GoalChipsRow extends StatelessWidget {
+  const _GoalChipsRow();
+
+  @override
+  Widget build(BuildContext context) {
+    final provider = Provider.of<ProductProvider>(context);
+    var cats = provider.categories
+        .where((c) => c.toLowerCase() != 'all')
+        .toList();
+
+    if (cats.isEmpty) {
+      // Fallback goals if no categories yet
+      cats = [
+        'Weight loss',
+        'Diabetes care',
+        'Joint support',
+        'Hair & skin',
+        'General wellness',
+      ];
+    }
+
+    cats.shuffle(Random());
+    final display = cats.take(5).toList();
+
+    return SizedBox(
+      height: 40,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemBuilder: (context, index) {
+          final label = display[index];
+          return ChoiceChip(
+            label: Text(label, style: const TextStyle(fontSize: 12)),
+            selected: false,
+            onSelected: (_) {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => GoalProductsPage(goal: label),
+                ),
+              );
+            },
+            backgroundColor: Colors.white,
+            selectedColor: Colors.green.shade50,
+            shape: StadiumBorder(
+              side: BorderSide(color: Colors.green.shade600),
+            ),
+          );
+        },
+        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        itemCount: display.length,
+      ),
+    );
+  }
+}
+
+/// Shows products related to that goal/collection label
+class GoalProductsPage extends StatelessWidget {
+  final String goal;
+
+  const GoalProductsPage({super.key, required this.goal});
+
+  // 🔍 Decide how to filter based on the goal label
+  // List<String> _keywordsForGoal() {
+  //   final g = goal.toLowerCase();
+
+  //   // For these, show ALL products (no filter)
+  //   if (g.contains('all product') || g.contains('home page')) {
+  //     return [];
+  //   }
+
+  //   final cleaned = g.replaceAll('&', ' ');
+  //   final parts = cleaned.split(RegExp(r'\s+'));
+  //   // ignore very short words like "for", "and"
+  //   return parts.where((w) => w.length > 3).toList();
+  // }
+
+  List<String> _keywordsForGoal(String goal) {
+    final g = goal.toLowerCase();
+
+    // ✅ These should show everything
+    if (g.contains('all product') || g.contains('home page')) {
+      return []; // no filter = show all products
+    }
+
+    final cleaned = g.replaceAll('&', ' ');
+    final parts = cleaned.split(RegExp(r'\s+'));
+    final keywords = parts
+        .where((w) => w.length > 3)
+        .toList(); // ignore tiny words
+    return keywords;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final provider = Provider.of<ProductProvider>(context);
+    final products = provider.products;
+
+    final keywords = _keywordsForGoal(goal);
+
+    final filtered = products.where((p) {
+      if (keywords.isEmpty) return true; // show ALL products
+      final name = p.name.toLowerCase();
+      return keywords.any((kw) => name.contains(kw));
+    }).toList();
+
+    final isWide = MediaQuery.of(context).size.width > 600;
+    final crossAxisCount = isWide ? 3 : 2;
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(goal),
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black87,
+        elevation: 0.4,
+      ),
+      body: Container(
+        color: kBgTint,
+        child: filtered.isEmpty
+            ? const Center(
+                child: Text(
+                  'No products found for this focus.\nTry exploring other categories.',
+                  textAlign: TextAlign.center,
+                ),
+              )
+            : Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: GridView.builder(
+                  itemCount: filtered.length,
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: crossAxisCount,
+                    mainAxisSpacing: 12,
+                    crossAxisSpacing: 12,
+                    childAspectRatio: 0.65,
+                  ),
+                  itemBuilder: (_, i) {
+                    return _SpotlightProductCard(product: filtered[i]);
+                  },
+                ),
+              ),
+      ),
+    );
+  }
+}
+
+// ───────────────────────────────────────────────────────────────
 // Section Header
 // ───────────────────────────────────────────────────────────────
 
@@ -524,8 +695,6 @@ class _SectionHeader extends StatelessWidget {
                 ),
             ],
           ),
-          if (title == 'In the Spotlight')
-            TextButton(onPressed: () {}, child: const Text('See All')),
         ],
       ),
     );
@@ -533,14 +702,15 @@ class _SectionHeader extends StatelessWidget {
 }
 
 // ───────────────────────────────────────────────────────────────
-// Category Row
+// Category Grid (4×N cards like screenshot, vertical scroll)
 // ───────────────────────────────────────────────────────────────
-
-class _CategoryRow extends StatelessWidget {
-  const _CategoryRow();
+class _CategoryGrid extends StatelessWidget {
+  const _CategoryGrid();
 
   IconData _iconForCategory(String name) {
     final key = name.toLowerCase();
+    if (key.contains('home')) return Icons.home_outlined;
+    if (key.contains('all product')) return Icons.grid_view_rounded;
     if (key == 'all') return Icons.all_inclusive;
     if (key.contains('special')) return Icons.local_offer;
     if (key.contains('skin')) return Icons.spa;
@@ -548,7 +718,9 @@ class _CategoryRow extends StatelessWidget {
     if (key.contains('women')) return Icons.female;
     if (key.contains('immunity')) return Icons.health_and_safety;
     if (key.contains('ortho')) return Icons.accessibility_new;
-    if (key.contains('diabetic')) return Icons.bloodtype;
+    if (key.contains('diabetic') || key.contains('sugar')) {
+      return Icons.bloodtype;
+    }
     if (key.contains('gut') || key.contains('liver')) {
       return Icons.medical_information;
     }
@@ -558,82 +730,218 @@ class _CategoryRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final productProvider = Provider.of<ProductProvider>(context);
-    final selected = productProvider.selectedCategory;
-    final categories = productProvider.categories;
 
-    if (productProvider.isLoading && categories.length <= 1) {
+    // Base categories from provider, remove duplicates / generic ones
+    final List<String> baseCats = productProvider.categories
+        .map((c) => c.trim())
+        .where((c) {
+          final lc = c.toLowerCase();
+          return lc != 'all' && lc != 'home page' && lc != 'all products';
+        })
+        .toList();
+
+    if (productProvider.isLoading && baseCats.length <= 1) {
       return const SizedBox(
         height: 100,
         child: Center(child: CircularProgressIndicator()),
       );
     }
 
-    return SizedBox(
-      height: 110,
-      child: ListView.separated(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        scrollDirection: Axis.horizontal,
-        itemBuilder: (_, i) {
-          final label = categories[i];
-          final icon = _iconForCategory(label);
-          final bool isSelected = selected == label;
+    // 🔒 Pin these 2 at the beginning (only once)
+    final List<String> categories = ['Home page', 'All products', ...baseCats];
 
-          return GestureDetector(
-            onTap: () {
-              productProvider.filterByCategory(label);
-            },
-            child: Column(
-              children: [
-                Container(
-                  width: 64,
-                  height: 64,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: isSelected ? kDarkGreen : Colors.white,
-                    boxShadow: [
-                      BoxShadow(
-                        blurRadius: 6,
-                        offset: const Offset(0, 2),
-                        color: Colors.black.withOpacity(0.06),
+    if (categories.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 16),
+        child: Text(
+          'Categories will appear here when products are loaded.',
+          style: TextStyle(fontSize: 12),
+        ),
+      );
+    }
+
+    const int perPage = 8; // 4 columns × 2 rows
+    final int pageCount = (categories.length / perPage).ceil();
+    final double pageWidth =
+        MediaQuery.of(context).size.width - 32; // 16 + 16 padding
+
+    return SizedBox(
+      // enough height for 2 rows of cards => avoids RenderFlex overflow
+      height: 290,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: pageCount,
+        itemBuilder: (context, pageIndex) {
+          final start = pageIndex * perPage;
+          final end = (start + perPage) > categories.length
+              ? categories.length
+              : (start + perPage);
+          final slice = categories.sublist(start, end);
+
+          return SizedBox(
+            width: pageWidth,
+            child: GridView.builder(
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: slice.length,
+              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                crossAxisCount: 4, // 4 columns
+                mainAxisSpacing: 12, // equal vertical gap
+                crossAxisSpacing: 12, // equal horizontal gap
+                childAspectRatio: 0.6, // a bit taller -> no overflow
+              ),
+              itemBuilder: (context, i) {
+                final label = slice[i];
+                final icon = _iconForCategory(label);
+
+                return GestureDetector(
+                  onTap: () {
+                    if (label == 'Home page' || label == 'All products') {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              const GoalProductsPage(goal: 'All products'),
+                        ),
+                      );
+                    } else {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => GoalProductsPage(goal: label),
+                        ),
+                      );
+                    }
+                  },
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(22),
+                    child: Container(
+                      decoration: const BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [Color(0xFFE3F7FF), Color(0xFFFFFFFF)],
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                        ),
                       ),
-                    ],
-                  ),
-                  child: Icon(
-                    icon,
-                    size: 28,
-                    color: isSelected ? Colors.white : kDarkGreen,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                SizedBox(
-                  width: 80,
-                  child: Text(
-                    label,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: isSelected
-                          ? FontWeight.w700
-                          : FontWeight.w500,
-                      color: isSelected ? kDarkGreen : Colors.black87,
+                      child: Stack(
+                        children: [
+                          // Center icon
+                          Align(
+                            alignment: Alignment.center,
+                            child: Icon(icon, size: 30, color: Colors.black26),
+                          ),
+                          // Bottom label + arrow
+                          Align(
+                            alignment: Alignment.bottomCenter,
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical:
+                                    3, // slightly smaller to avoid overflow
+                              ),
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  colors: [
+                                    Colors.black.withOpacity(0.0),
+                                    Colors.black.withOpacity(0.45),
+                                  ],
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                ),
+                              ),
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      label,
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Container(
+                                    width: 18,
+                                    height: 18,
+                                    decoration: const BoxDecoration(
+                                      color: Colors.white,
+                                      shape: BoxShape.circle,
+                                    ),
+                                    child: const Icon(
+                                      Icons.chevron_right,
+                                      size: 16,
+                                      color: Colors.black,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              ],
+                );
+              },
             ),
           );
         },
-        separatorBuilder: (_, __) => const SizedBox(width: 14),
-        itemCount: categories.length,
       ),
     );
   }
 }
 
 // ───────────────────────────────────────────────────────────────
-// Spotlight Product Card
+// Trending Grid (uses random subset)
+// ───────────────────────────────────────────────────────────────
+
+class _TrendingGrid extends StatelessWidget {
+  final List<Product> products;
+  const _TrendingGrid({required this.products});
+
+  @override
+  Widget build(BuildContext context) {
+    if (products.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(horizontal: 16),
+        child: Text(
+          'No products to show right now.',
+          style: TextStyle(fontSize: 13),
+        ),
+      );
+    }
+
+    final isWide = MediaQuery.of(context).size.width > 600;
+    final crossAxisCount = isWide ? 3 : 2;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: GridView.builder(
+        shrinkWrap: true,
+        physics: const NeverScrollableScrollPhysics(),
+        itemCount: products.length,
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: crossAxisCount,
+          childAspectRatio: 0.65,
+          mainAxisSpacing: 12,
+          crossAxisSpacing: 12,
+        ),
+        itemBuilder: (_, i) {
+          final p = products[i];
+          return _SpotlightProductCard(product: p);
+        },
+      ),
+    );
+  }
+}
+
+// ───────────────────────────────────────────────────────────────
+// Product Card (reused everywhere)
 // ───────────────────────────────────────────────────────────────
 
 class _SpotlightProductCard extends StatelessWidget {
@@ -662,7 +970,6 @@ class _SpotlightProductCard extends StatelessWidget {
         );
       },
       child: Container(
-        width: 170,
         padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
           color: Colors.white,
@@ -812,134 +1119,38 @@ class _SpotlightProductCard extends StatelessWidget {
 }
 
 // ───────────────────────────────────────────────────────────────
-// Mid Promo Banner
+// Combos Row (uses combo/offer products)
 // ───────────────────────────────────────────────────────────────
 
-class _MidPromoBanner extends StatelessWidget {
-  const _MidPromoBanner();
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: kPrimaryGreen.withOpacity(0.7)),
-        ),
-        padding: const EdgeInsets.all(14),
-        child: Row(
-          children: const [
-            Icon(Icons.local_offer, color: kDarkGreen),
-            SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                'FLAT 30% OFF on combos • Auto-applied at checkout',
-                style: TextStyle(fontSize: 12),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ───────────────────────────────────────────────────────────────
-// New Arrivals Grid (reuses same card style as spotlight)
-// ───────────────────────────────────────────────────────────────
-
-class _NewArrivalsGrid extends StatelessWidget {
+class _CombosRow extends StatelessWidget {
   final List<Product> products;
-  const _NewArrivalsGrid({required this.products});
+
+  const _CombosRow({required this.products});
 
   @override
   Widget build(BuildContext context) {
-    if (products.isEmpty) {
-      return const Padding(
-        padding: EdgeInsets.symmetric(horizontal: 16),
-        child: Text(
-          'No new arrivals to show right now.',
-          style: TextStyle(fontSize: 13),
-        ),
-      );
-    }
+    final combos = products.take(8).toList();
 
-    final isWide = MediaQuery.of(context).size.width > 600;
-    final crossAxisCount = isWide ? 3 : 2;
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: GridView.builder(
-        shrinkWrap: true,
-        physics: const NeverScrollableScrollPhysics(),
-        itemCount: products.length,
-        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: crossAxisCount,
-          childAspectRatio: 0.65,
-          mainAxisSpacing: 12,
-          crossAxisSpacing: 12,
-        ),
+    return SizedBox(
+      height: 240,
+      child: ListView.separated(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        scrollDirection: Axis.horizontal,
         itemBuilder: (_, i) {
-          final p = products[i];
-          return _SpotlightProductCard(product: p);
+          final p = combos[i];
+          return SizedBox(width: 170, child: _SpotlightProductCard(product: p));
         },
+        separatorBuilder: (_, __) => const SizedBox(width: 12),
+        itemCount: combos.length,
       ),
     );
   }
 }
 
 // ───────────────────────────────────────────────────────────────
-// Blog Row
+// Blog Row (Shopify Storefront articles)
 // ───────────────────────────────────────────────────────────────
-// ------------------------------------------------------
-//  MODEL + STATIC DATA
-// ------------------------------------------------------
 
-class AyurvedaBlog {
-  final String imageUrl; // asset path or network URL
-  final String title;
-  final String subtitle;
-  final String shortText;
-
-  const AyurvedaBlog({
-    required this.imageUrl,
-    required this.title,
-    required this.subtitle,
-    required this.shortText,
-  });
-}
-
-// Static data for the 3 cards on Home
-// 👉 If you're using asset images, make sure they exist and are added in pubspec.yaml
-const List<AyurvedaBlog> _healingBlogs = [
-  AyurvedaBlog(
-    imageUrl: 'assets/images/healing_weight_loss.png',
-    title: 'WEIGHT LOSS TIPS IN WINTER WITHOUT EXERCISE',
-    subtitle: 'Support metabolism gently in colder months',
-    shortText:
-        'Simple daily habits and Ayurvedic herbs that help shed excess weight without intense workouts.',
-  ),
-  AyurvedaBlog(
-    imageUrl: 'assets/images/healing_romalo_ram.png',
-    title: 'PADMA SHRI ROMALO RAM JI PROMOTES AYURVEDA FOR A BETTER LIFESTYLE',
-    subtitle: 'Traditional wisdom for modern life',
-    shortText:
-        'How folk traditions and Ayurveda blend to create a more balanced, stress-free lifestyle.',
-  ),
-  AyurvedaBlog(
-    imageUrl: 'assets/images/healing_shivaram.png',
-    title: 'BEST MEDICINE FOR DIABETES TYPE 2 TO MANAGE BLOOD SUGAR LEVEL',
-    subtitle: 'Natural support for sugar balance',
-    shortText:
-        'Understand key herbs that support healthy glucose levels as part of your daily routine.',
-  ),
-];
-
-// ------------------------------------------------------
-//  ROW OF CARDS ON HOME
-// ------------------------------------------------------
 const List<String> _healingArticleHandles = [
   'tips-for-fast-weight-loss-in-winter-without-exercise',
   'padma-shri-romalo-ram-ji-praises-shivya-ayurveda-s-vision-for-natural-wellness',
@@ -963,7 +1174,6 @@ class _BlogRow extends StatelessWidget {
         itemBuilder: (_, i) {
           final handle = _healingArticleHandles[i];
 
-          // Decide which full page to open on tap
           Widget page;
           if (i == 0) {
             page = const BlogWinterWeightLossPage();
@@ -1008,18 +1218,15 @@ class _HealingBlogCard extends StatelessWidget {
       ),
       builder: (context, snap) {
         if (snap.connectionState == ConnectionState.waiting) {
-          // simple loading skeleton
           return _buildSkeletonCard(theme);
         }
 
         if (snap.hasError || !snap.hasData) {
-          // fallback card on error
           return _buildErrorCard(theme);
         }
 
         final article = snap.data!;
 
-        // from metafields if available, else fallback
         final subtitle =
             (article.subtitle != null && article.subtitle!.trim().isNotEmpty)
             ? article.subtitle!.trim()
@@ -1045,7 +1252,6 @@ class _HealingBlogCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // IMAGE from Shopify (no assets)
                 SizedBox(
                   height: 170,
                   width: double.infinity,
@@ -1065,7 +1271,6 @@ class _HealingBlogCard extends StatelessWidget {
                   ),
                 ),
 
-                // TEXT
                 Padding(
                   padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
                   child: Column(
@@ -1085,7 +1290,7 @@ class _HealingBlogCard extends StatelessWidget {
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: theme.textTheme.bodySmall?.copyWith(
-                          color: kPrimaryGreen, // or Colors.green.shade700
+                          color: kDarkGreen,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -1107,7 +1312,7 @@ class _HealingBlogCard extends StatelessWidget {
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
-                              color: kDarkGreen, // or Colors.green
+                              color: kDarkGreen,
                             ),
                           ),
                           SizedBox(width: 4),
@@ -1129,7 +1334,6 @@ class _HealingBlogCard extends StatelessWidget {
     );
   }
 
-  // Placeholder while loading / if image fails
   Widget _imagePlaceholder() {
     return Container(
       color: Colors.grey.shade200,
@@ -1254,7 +1458,7 @@ class _AwardsRow extends StatelessWidget {
 }
 
 // ───────────────────────────────────────────────────────────────
-// News Ticker
+// News Ticker (Featured On)
 // ───────────────────────────────────────────────────────────────
 
 class _NewsTicker extends StatefulWidget {
@@ -1333,6 +1537,75 @@ class _NewsTickerState extends State<_NewsTicker> {
         },
         separatorBuilder: (_, __) => const SizedBox(width: 10),
         itemCount: _channels.length * 3,
+      ),
+    );
+  }
+}
+
+// ───────────────────────────────────────────────────────────────
+// Trust Strip / Footer info
+// ───────────────────────────────────────────────────────────────
+
+class _TrustStrip extends StatelessWidget {
+  const _TrustStrip();
+
+  @override
+  Widget build(BuildContext context) {
+    final items = const [
+      (icon: Icons.verified_outlined, text: 'Lab-tested Ayurvedic formulas'),
+      (icon: Icons.local_shipping_outlined, text: 'Free shipping above ₹999'),
+      (
+        icon: Icons.currency_rupee_outlined,
+        text: 'COD available on most pincodes',
+      ),
+      (icon: Icons.flag_outlined, text: 'Made in India'),
+    ];
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(18),
+          boxShadow: [
+            BoxShadow(
+              blurRadius: 8,
+              offset: const Offset(0, 3),
+              color: Colors.black.withOpacity(0.05),
+            ),
+          ],
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Why people trust Shivya',
+              style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+            ),
+            const SizedBox(height: 8),
+            ...items.map(
+              (i) => Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Row(
+                  children: [
+                    Icon(i.icon, size: 18, color: kDarkGreen),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        i.text,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Colors.black87,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
