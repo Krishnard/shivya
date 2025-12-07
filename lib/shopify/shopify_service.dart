@@ -14,10 +14,9 @@ class ShopifyService {
       "https://${ShopifyConfig.storeUrl}/api/${ShopifyConfig.apiVersion}/graphql.json";
 
   Map<String, String> get _headers => {
-        "Content-Type": "application/json",
-        "X-Shopify-Storefront-Access-Token":
-            ShopifyConfig.storefrontAccessToken,
-      };
+    "Content-Type": "application/json",
+    "X-Shopify-Storefront-Access-Token": ShopifyConfig.storefrontAccessToken,
+  };
 
   Future<Map<String, dynamic>> _post(
     String query, {
@@ -33,8 +32,7 @@ class ShopifyService {
     );
 
     if (res.statusCode != 200) {
-      throw Exception(
-          'Shopify HTTP ${res.statusCode}: ${res.body}');
+      throw Exception('Shopify HTTP ${res.statusCode}: ${res.body}');
     }
 
     final Map<String, dynamic> body = jsonDecode(res.body);
@@ -90,8 +88,7 @@ class ShopifyService {
     ''';
 
     final data = await _post(query, variables: {'first': first});
-    final edges =
-        (data['data']?['products']?['edges'] as List<dynamic>? ?? []);
+    final edges = (data['data']?['products']?['edges'] as List<dynamic>? ?? []);
 
     return edges
         .map<Map<String, dynamic>>(
@@ -158,10 +155,7 @@ class ShopifyService {
 
     final data = await _post(
       query,
-      variables: {
-        'title': collectionTitle,
-        'first': first,
-      },
+      variables: {'title': collectionTitle, 'first': first},
     );
 
     final collections =
@@ -170,7 +164,7 @@ class ShopifyService {
 
     final productsEdges =
         (collections.first['node']?['products']?['edges'] as List<dynamic>? ??
-            []);
+        []);
 
     return productsEdges
         .map<Map<String, dynamic>>(
@@ -208,9 +202,7 @@ class ShopifyService {
         (data['data']?['collections']?['edges'] as List<dynamic>? ?? []);
 
     return edges
-        .map<String>(
-          (e) => (e['node']?['title'] as String?) ?? '',
-        )
+        .map<String>((e) => (e['node']?['title'] as String?) ?? '')
         .where((title) => title.trim().isNotEmpty)
         .toList();
   }
@@ -222,17 +214,13 @@ class ShopifyService {
   /// Convert a Shopify GraphQL Product node into a flat Map that
   /// can be consumed by Product.fromMap().
   Map<String, dynamic> _mapProductNode(Map<String, dynamic> node) {
-    final imagesEdges =
-        (node['images']?['edges'] as List<dynamic>? ?? []);
+    final imagesEdges = (node['images']?['edges'] as List<dynamic>? ?? []);
     final imageUrls = imagesEdges
-        .map<String>(
-          (e) => (e['node']?['url'] as String?) ?? '',
-        )
+        .map<String>((e) => (e['node']?['url'] as String?) ?? '')
         .where((url) => url.isNotEmpty)
         .toList();
 
-    final variantEdges =
-        (node['variants']?['edges'] as List<dynamic>? ?? []);
+    final variantEdges = (node['variants']?['edges'] as List<dynamic>? ?? []);
 
     final List<Map<String, dynamic>> variants = [];
     double price = 0.0;
@@ -243,10 +231,10 @@ class ShopifyService {
       final priceAmount = (v['price']?['amount'])?.toString();
       final compareAmount = (v['compareAtPrice']?['amount'])?.toString();
 
-      final double variantPrice =
-          double.tryParse(priceAmount ?? '') ?? 0.0;
-      final double? variantCompareAtPrice =
-          compareAmount != null ? double.tryParse(compareAmount) : null;
+      final double variantPrice = double.tryParse(priceAmount ?? '') ?? 0.0;
+      final double? variantCompareAtPrice = compareAmount != null
+          ? double.tryParse(compareAmount)
+          : null;
 
       variants.add({
         'id': v['id'] ?? '',
@@ -271,5 +259,94 @@ class ShopifyService {
       'compareAtPrice': compareAtPrice,
       'variants': variants,
     };
+  }
+
+  // ─────────────────────────────────────────────────────────────
+  // ARTICLES
+  // ─────────────────────────────────────────────────────────────
+
+  Future<ShopifyArticle> fetchArticleByHandle({
+    required String blogHandle,
+    required String articleHandle,
+  }) async {
+    const String query = r'''
+  query ArticleByHandle($blogHandle: String!, $articleHandle: String!) {
+    blog(handle: $blogHandle) {
+      articleByHandle(handle: $articleHandle) {
+        title
+        content
+        image {
+          url
+        }
+        subtitleMf: metafield(namespace: "app", key: "subtitle") {
+          value
+        }
+        introMf: metafield(namespace: "app", key: "intro") {
+          value
+        }
+        sideTitleMf: metafield(namespace: "app", key: "side_section_title") {
+          value
+        }
+        sideTextMf: metafield(namespace: "app", key: "side_section_text") {
+          value
+        }
+      }
+    }
+  }
+  ''';
+
+    // use the same _post() you already use for products/collections
+    final data = await _post(
+      query,
+      variables: {'blogHandle': blogHandle, 'articleHandle': articleHandle},
+    );
+
+    final blog = data['data']?['blog'];
+    if (blog == null || blog['articleByHandle'] == null) {
+      throw Exception('Article not found for handle: $articleHandle');
+    }
+
+    final articleJson = blog['articleByHandle'] as Map<String, dynamic>;
+    return ShopifyArticle.fromJson(articleJson);
+  }
+}
+
+class ShopifyArticle {
+  final String title;
+  final String content; // plain text from Shopify
+  final String? imageUrl;
+
+  // Metafields from namespace "app"
+  final String? subtitle; // app.subtitle
+  final String? intro; // app.intro
+  final String? sideSectionTitle; // app.side_section_title
+  final String? sideSectionText; // app.side_section_text
+
+  ShopifyArticle({
+    required this.title,
+    required this.content,
+    this.imageUrl,
+    this.subtitle,
+    this.intro,
+    this.sideSectionTitle,
+    this.sideSectionText,
+  });
+
+  factory ShopifyArticle.fromJson(Map<String, dynamic> json) {
+    String? _meta(Map<String, dynamic> j, String key) {
+      final field = j[key];
+      if (field == null) return null;
+      return field['value'] as String?;
+    }
+
+    return ShopifyArticle(
+      title: json['title'] as String? ?? '',
+      content: json['content'] as String? ?? '',
+      imageUrl: json['image'] != null ? json['image']['url'] as String? : null,
+      subtitle: _meta(json, 'subtitleMf'),
+      intro: _meta(json, 'introMf'),
+      sideSectionTitle: _meta(json, 'sideTitleMf'),
+      sideSectionText: _meta(json, 'sideTextMf'),
+    );
   }
 }

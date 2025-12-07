@@ -18,6 +18,10 @@ import '../widgets/shimmer/category_shimmer.dart';
 import '../widgets/shimmer/product_horizontal_shimmer.dart';
 import '../widgets/shimmer/simple_row_shimmer.dart';
 
+import '../pages/healing_blogs_pages.dart';
+
+import '../shopify/shopify_service.dart';
+
 const Color kPrimaryGreen = Color(0xFF99FF99); // light green
 const Color kBgTint = Color(0xFFE8F7F3); // soft mint background
 const Color kDarkGreen = Color(0xFF0F7A4A); // dark green
@@ -889,60 +893,319 @@ class _NewArrivalsGrid extends StatelessWidget {
 // ───────────────────────────────────────────────────────────────
 // Blog Row
 // ───────────────────────────────────────────────────────────────
+// ------------------------------------------------------
+//  MODEL + STATIC DATA
+// ------------------------------------------------------
+
+class AyurvedaBlog {
+  final String imageUrl; // asset path or network URL
+  final String title;
+  final String subtitle;
+  final String shortText;
+
+  const AyurvedaBlog({
+    required this.imageUrl,
+    required this.title,
+    required this.subtitle,
+    required this.shortText,
+  });
+}
+
+// Static data for the 3 cards on Home
+// 👉 If you're using asset images, make sure they exist and are added in pubspec.yaml
+const List<AyurvedaBlog> _healingBlogs = [
+  AyurvedaBlog(
+    imageUrl: 'assets/images/healing_weight_loss.png',
+    title: 'WEIGHT LOSS TIPS IN WINTER WITHOUT EXERCISE',
+    subtitle: 'Support metabolism gently in colder months',
+    shortText:
+        'Simple daily habits and Ayurvedic herbs that help shed excess weight without intense workouts.',
+  ),
+  AyurvedaBlog(
+    imageUrl: 'assets/images/healing_romalo_ram.png',
+    title: 'PADMA SHRI ROMALO RAM JI PROMOTES AYURVEDA FOR A BETTER LIFESTYLE',
+    subtitle: 'Traditional wisdom for modern life',
+    shortText:
+        'How folk traditions and Ayurveda blend to create a more balanced, stress-free lifestyle.',
+  ),
+  AyurvedaBlog(
+    imageUrl: 'assets/images/healing_shivaram.png',
+    title: 'BEST MEDICINE FOR DIABETES TYPE 2 TO MANAGE BLOOD SUGAR LEVEL',
+    subtitle: 'Natural support for sugar balance',
+    shortText:
+        'Understand key herbs that support healthy glucose levels as part of your daily routine.',
+  ),
+];
+
+// ------------------------------------------------------
+//  ROW OF CARDS ON HOME
+// ------------------------------------------------------
+const List<String> _healingArticleHandles = [
+  'tips-for-fast-weight-loss-in-winter-without-exercise',
+  'padma-shri-romalo-ram-ji-praises-shivya-ayurveda-s-vision-for-natural-wellness',
+  'beyond-medicine-how-ancient-ayurvedic-remedies-for-diabetes-offer-modern-blood-sugar-balance',
+];
 
 class _BlogRow extends StatelessWidget {
   const _BlogRow();
 
   @override
   Widget build(BuildContext context) {
-    final blogs = [
-      'Healing with Ayurveda: Daily Rituals',
-      'Balancing Doshas with Food',
-      'Detox the Natural Way',
-    ];
+    if (_healingArticleHandles.isEmpty) return const SizedBox.shrink();
 
     return SizedBox(
-      height: 150,
+      height: 340,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: _healingArticleHandles.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 14),
         itemBuilder: (_, i) {
-          return Container(
-            width: 220,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(18),
-            ),
-            padding: const EdgeInsets.all(12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  height: 70,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(12),
-                    color: kPrimaryGreen.withOpacity(0.4),
-                  ),
-                  child: const Center(child: Icon(Icons.menu_book_outlined)),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  blogs[i],
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 4),
-                const Text(
-                  'Read more ›',
-                  style: TextStyle(fontSize: 11, color: kDarkGreen),
-                ),
-              ],
+          final handle = _healingArticleHandles[i];
+
+          // Decide which full page to open on tap
+          Widget page;
+          if (i == 0) {
+            page = const BlogWinterWeightLossPage();
+          } else if (i == 1) {
+            page = const BlogRomaloRamPage();
+          } else {
+            page = const BlogAyurvedaDiabetesPage();
+          }
+
+          return SizedBox(
+            width: 280,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(24),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => page),
+                );
+              },
+              child: _HealingBlogCard(articleHandle: handle),
             ),
           );
         },
-        separatorBuilder: (_, __) => const SizedBox(width: 10),
-        itemCount: blogs.length,
+      ),
+    );
+  }
+}
+
+class _HealingBlogCard extends StatelessWidget {
+  final String articleHandle;
+
+  const _HealingBlogCard({required this.articleHandle});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return FutureBuilder<ShopifyArticle>(
+      future: ShopifyService().fetchArticleByHandle(
+        blogHandle: 'healing-with-ayurveda',
+        articleHandle: articleHandle,
+      ),
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          // simple loading skeleton
+          return _buildSkeletonCard(theme);
+        }
+
+        if (snap.hasError || !snap.hasData) {
+          // fallback card on error
+          return _buildErrorCard(theme);
+        }
+
+        final article = snap.data!;
+
+        // from metafields if available, else fallback
+        final subtitle =
+            (article.subtitle != null && article.subtitle!.trim().isNotEmpty)
+            ? article.subtitle!.trim()
+            : 'Healing with Ayurveda';
+
+        final shortTextSource =
+            (article.intro != null && article.intro!.trim().isNotEmpty)
+            ? article.intro!
+            : article.content;
+
+        final shortText = shortTextSource.replaceAll('\n', ' ').trim();
+
+        return Material(
+          elevation: 6,
+          borderRadius: BorderRadius.circular(24),
+          clipBehavior: Clip.antiAlias,
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: Colors.grey.shade200, width: 1.4),
+              color: Colors.white,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // IMAGE from Shopify (no assets)
+                SizedBox(
+                  height: 170,
+                  width: double.infinity,
+                  child: ClipRRect(
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(24),
+                      topRight: Radius.circular(24),
+                    ),
+                    child:
+                        article.imageUrl != null && article.imageUrl!.isNotEmpty
+                        ? Image.network(
+                            article.imageUrl!,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => _imagePlaceholder(),
+                          )
+                        : _imagePlaceholder(),
+                  ),
+                ),
+
+                // TEXT
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        article.title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        subtitle,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: kPrimaryGreen, // or Colors.green.shade700
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        shortText,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          height: 1.35,
+                          color: Colors.grey.shade700,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: const [
+                          Text(
+                            'Read more',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: kDarkGreen, // or Colors.green
+                            ),
+                          ),
+                          SizedBox(width: 4),
+                          Icon(
+                            Icons.arrow_forward_rounded,
+                            size: 16,
+                            color: kDarkGreen,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // Placeholder while loading / if image fails
+  Widget _imagePlaceholder() {
+    return Container(
+      color: Colors.grey.shade200,
+      alignment: Alignment.center,
+      child: const Icon(
+        Icons.image_not_supported_outlined,
+        size: 30,
+        color: Colors.grey,
+      ),
+    );
+  }
+
+  Widget _buildSkeletonCard(ThemeData theme) {
+    return Material(
+      elevation: 3,
+      borderRadius: BorderRadius.circular(24),
+      clipBehavior: Clip.antiAlias,
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(24),
+          color: Colors.grey.shade100,
+        ),
+        child: Column(
+          children: [
+            Container(height: 170, color: Colors.grey.shade300),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    height: 14,
+                    width: 160,
+                    color: Colors.grey.shade300,
+                  ),
+                  const SizedBox(height: 6),
+                  Container(
+                    height: 10,
+                    width: 120,
+                    color: Colors.grey.shade300,
+                  ),
+                  const SizedBox(height: 10),
+                  Container(
+                    height: 10,
+                    width: double.infinity,
+                    color: Colors.grey.shade300,
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildErrorCard(ThemeData theme) {
+    return Material(
+      elevation: 3,
+      borderRadius: BorderRadius.circular(24),
+      clipBehavior: Clip.antiAlias,
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(24),
+          color: Colors.white,
+          border: Border.all(color: Colors.grey.shade300),
+        ),
+        padding: const EdgeInsets.all(16),
+        child: Center(
+          child: Text(
+            'Unable to load blog',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: Colors.grey.shade600,
+            ),
+          ),
+        ),
       ),
     );
   }
